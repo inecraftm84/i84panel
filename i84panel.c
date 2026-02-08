@@ -10,6 +10,7 @@
 Window menu_win = None;
 
 void draw_menu_content(Display *d, Window m, int hover) {
+    int s = DefaultScreen(d);
     GC mgc = XCreateGC(d, m, 0, 0);
     char *items[] = {"XTERM", "CHANGE BG", "KILL ALL"};
     XClearWindow(d, m);
@@ -32,31 +33,17 @@ int main() {
     srand(time(NULL));
     int s = DefaultScreen(d), sw = DisplayWidth(d, s), sh = DisplayHeight(d, s), ph = 32;
     Window root = RootWindow(d, s);
-
-    XSetWindowAttributes sattr;
-    sattr.background_pixel = 0xDDDDDD;
-    sattr.override_redirect = True;
-
-    Window w = XCreateWindow(d, root, 0, sh - ph, sw, ph, 0, 
-                             CopyFromParent, InputOutput, CopyFromParent,
-                             CWBackPixel | CWOverrideRedirect, &sattr);
-
-    XClassHint *ch = XAllocClassHint();
-    ch->res_name = "i84panel";
-    ch->res_class = "i84panel";
-    XSetClassHint(d, w, ch);
-    XFree(ch);
+    Window w = XCreateSimpleWindow(d, root, 0, sh - ph, sw, ph, 0, 0, 0xDDDDDD);
 
     Atom t = XInternAtom(d, "_NET_WM_WINDOW_TYPE", False);
     Atom dk = XInternAtom(d, "_NET_WM_WINDOW_TYPE_DOCK", False);
     XChangeProperty(d, w, t, XA_ATOM, 32, PropModeReplace, (unsigned char *)&dk, 1);
-    
     long st_v[12] = {0, 0, 0, ph, 0, 0, 0, 0, 0, 0, 0, sw - 1};
     Atom st = XInternAtom(d, "_NET_WM_STRUT_PARTIAL", False);
     XChangeProperty(d, w, st, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)st_v, 12);
 
     XSelectInput(d, w, ExposureMask | ButtonPressMask);
-    XMapRaised(d, w);
+    XMapWindow(d, w);
     GC gc = XCreateGC(d, w, 0, 0);
 
     while (1) {
@@ -69,7 +56,7 @@ int main() {
                         XSetWindowAttributes at; at.override_redirect = True;
                         XChangeWindowAttributes(d, menu_win, CWOverrideRedirect, &at);
                         XSelectInput(d, menu_win, ExposureMask | ButtonPressMask | PointerMotionMask);
-                        XMapRaised(d, menu_win);
+                        XMapWindow(d, menu_win);
                     } else { XDestroyWindow(d, menu_win); menu_win = None; }
                 } else {
                     Window r_ret, p_ret, *children; unsigned int n_win = 0;
@@ -81,7 +68,7 @@ int main() {
                         if (nm && children[i] != w && children[i] != menu_win && wa.width > 50) {
                             if (win_count == target_idx) {
                                 if (wa.map_state == IsViewable) XUnmapWindow(d, children[i]);
-                                else XMapRaised(d, children[i]);
+                                else { XMapWindow(d, children[i]); XRaiseWindow(d, children[i]); }
                                 XFree(nm); break;
                             }
                             win_count++;
@@ -95,21 +82,17 @@ int main() {
                 if (ev.type == MotionNotify) draw_menu_content(d, menu_win, ev.xmotion.y / 30);
                 if (ev.type == ButtonPress) {
                     int idx = ev.xbutton.y / 30;
-                    if (idx == 0) { if (fork() == 0) { execlp("xterm", "xterm", NULL); _exit(0); } }
-                    else if (idx == 1) { XSetWindowBackground(d, root, (rand() % 0xFFFFFF)); XClearWindow(d, root); }
-                    else if (idx == 2) {
+                    if (idx == 0) {
+                        if (fork() == 0) { execlp("xterm", "xterm", NULL); _exit(0); }
+                    } else if (idx == 1) {
+                        XSetWindowBackground(d, root, (rand() % 0xFFFFFF));
+                        XClearWindow(d, root);
+                    } else if (idx == 2) {
                         Window r_ret, p_ret, *children; unsigned int n_win = 0;
                         XQueryTree(d, root, &r_ret, &p_ret, &children, &n_win);
                         for (int i = 0; i < n_win; i++) {
                             XWindowAttributes wa; XGetWindowAttributes(d, children[i], &wa);
-                            XClassHint hint;
-                            int has_hint = XGetClassHint(d, children[i], &hint);
-                            int protect = 0;
-                            if (has_hint) {
-                                if (hint.res_name && (strcmp(hint.res_name, "i84panel") == 0 || strstr(hint.res_name, "Xorg"))) protect = 1;
-                                XFree(hint.res_name); XFree(hint.res_class);
-                            }
-                            if (children[i] != w && children[i] != menu_win && wa.width > 50 && !protect) XKillClient(d, children[i]);
+                            if (children[i] != w && children[i] != menu_win && wa.width > 50) XKillClient(d, children[i]);
                         }
                         if (n_win > 0) XFree(children);
                     }
@@ -118,6 +101,7 @@ int main() {
                 if (ev.type == Expose) draw_menu_content(d, menu_win, -1);
             }
         }
+
         XClearWindow(d, w);
         XSetForeground(d, gc, 0xBBBBBB);
         XFillRectangle(d, w, gc, 5, 4, 65, 24);
@@ -127,7 +111,7 @@ int main() {
         Window r_ret, p_ret, *children; unsigned int n_win = 0;
         XQueryTree(d, root, &r_ret, &p_ret, &children, &n_win);
         int win_count = 0;
-        for (int i = 0; i < n_win && win_count < 12; i++) {
+        for (int i = 0; i < n_win && win_count < 8; i++) {
             XWindowAttributes wa; XGetWindowAttributes(d, children[i], &wa);
             char *nm; XFetchName(d, children[i], &nm);
             if (nm && children[i] != w && children[i] != menu_win && wa.width > 50) {
