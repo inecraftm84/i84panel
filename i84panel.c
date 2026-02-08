@@ -35,11 +35,17 @@ int main() {
 
     XSetWindowAttributes sattr;
     sattr.background_pixel = 0xDDDDDD;
-    sattr.override_redirect = True; // 防止 TWM 管理與移動
+    sattr.override_redirect = True;
 
     Window w = XCreateWindow(d, root, 0, sh - ph, sw, ph, 0, 
                              CopyFromParent, InputOutput, CopyFromParent,
                              CWBackPixel | CWOverrideRedirect, &sattr);
+
+    XClassHint *ch = XAllocClassHint();
+    ch->res_name = "i84panel";
+    ch->res_class = "i84panel";
+    XSetClassHint(d, w, ch);
+    XFree(ch);
 
     Atom t = XInternAtom(d, "_NET_WM_WINDOW_TYPE", False);
     Atom dk = XInternAtom(d, "_NET_WM_WINDOW_TYPE_DOCK", False);
@@ -50,7 +56,7 @@ int main() {
     XChangeProperty(d, w, st, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)st_v, 12);
 
     XSelectInput(d, w, ExposureMask | ButtonPressMask);
-    XMapRaised(d, w); // 確保在最上層
+    XMapRaised(d, w);
     GC gc = XCreateGC(d, w, 0, 0);
 
     while (1) {
@@ -75,7 +81,7 @@ int main() {
                         if (nm && children[i] != w && children[i] != menu_win && wa.width > 50) {
                             if (win_count == target_idx) {
                                 if (wa.map_state == IsViewable) XUnmapWindow(d, children[i]);
-                                else { XMapRaised(d, children[i]); }
+                                else XMapRaised(d, children[i]);
                                 XFree(nm); break;
                             }
                             win_count++;
@@ -96,7 +102,14 @@ int main() {
                         XQueryTree(d, root, &r_ret, &p_ret, &children, &n_win);
                         for (int i = 0; i < n_win; i++) {
                             XWindowAttributes wa; XGetWindowAttributes(d, children[i], &wa);
-                            if (children[i] != w && children[i] != menu_win && wa.width > 50) XKillClient(d, children[i]);
+                            XClassHint hint;
+                            int has_hint = XGetClassHint(d, children[i], &hint);
+                            int protect = 0;
+                            if (has_hint) {
+                                if (hint.res_name && (strcmp(hint.res_name, "i84panel") == 0 || strstr(hint.res_name, "Xorg"))) protect = 1;
+                                XFree(hint.res_name); XFree(hint.res_class);
+                            }
+                            if (children[i] != w && children[i] != menu_win && wa.width > 50 && !protect) XKillClient(d, children[i]);
                         }
                         if (n_win > 0) XFree(children);
                     }
@@ -114,7 +127,7 @@ int main() {
         Window r_ret, p_ret, *children; unsigned int n_win = 0;
         XQueryTree(d, root, &r_ret, &p_ret, &children, &n_win);
         int win_count = 0;
-        for (int i = 0; i < n_win && win_count < 8; i++) {
+        for (int i = 0; i < n_win && win_count < 12; i++) {
             XWindowAttributes wa; XGetWindowAttributes(d, children[i], &wa);
             char *nm; XFetchName(d, children[i], &nm);
             if (nm && children[i] != w && children[i] != menu_win && wa.width > 50) {
